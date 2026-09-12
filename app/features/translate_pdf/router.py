@@ -8,7 +8,7 @@ from app.core.config import Settings, get_settings
 from app.core.security import read_upload, sanitize_filename, validate_pdf_bytes
 from app.features.translate_pdf.schemas import parse_language
 from app.features.translate_pdf.service import get_translator, translate_pdf
-from app.features.translate_pdf.translator import Translator
+from app.features.translate_pdf.translator import Translator, QuotaExhaustedError
 
 router = APIRouter(tags=["translate"])
 logger = logging.getLogger("pdf_editor")
@@ -31,7 +31,12 @@ def translate_pdf_endpoint(
 
     data = read_upload(file, settings.max_upload_size)
     validate_pdf_bytes(data)
-    output = translate_pdf(data, source, target, translator)
+    try:
+        output = translate_pdf(data, source, target, translator)
+    except QuotaExhaustedError as qe:
+        # Propagate as a 429 response – the free tier limit has been hit
+        raise HTTPException(status_code=429, detail=str(qe))
+    # If translation succeeded, continue as before
 
     stem = sanitize_filename(file.filename).rsplit(".", 1)[0]
     filename = f"translated_{stem}_{source}_to_{target}.pdf"

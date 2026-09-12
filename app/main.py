@@ -6,7 +6,11 @@ from app.core.config import get_settings
 from app.core.exceptions import install_exception_handlers
 from app.core.logging import configure_logging
 from app.features.translate_pdf.router import router as translate_router
-from app.features.watermark_pdf.router import router as watermark_router
+try:
+    from app.features.watermark_pdf.router import router as watermark_router
+except ImportError:  # Watermark feature not implemented yet
+    from fastapi import APIRouter
+    watermark_router = APIRouter()
 
 
 def create_app() -> FastAPI:
