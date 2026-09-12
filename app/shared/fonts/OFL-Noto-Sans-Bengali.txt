@@ -1,0 +1,4 @@
+Noto Sans Bengali font (c) The Noto Project Authors, licensed under the
+SIL Open Font License 1.1. Source: https://github.com/notofonts/bengali
+Bundled so PDF generation never depends on host-installed fonts.
+Full license: https://openfontlicense.org
