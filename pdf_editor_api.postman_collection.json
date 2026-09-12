@@ -1,0 +1,131 @@
+{
+	"info": {
+		"_postman_id": "b1f8e4a9-8d2a-4a6c-9e3d-7c2a1b3f5e6d",
+		"name": "PDF Editor Backend API",
+		"description": "Postman Collection for PDF Editor Backend APIs (Translation, Watermark, Health)",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "API A - Translate PDF",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "formdata",
+					"formdata": [
+						{
+							"key": "file",
+							"type": "file",
+							"src": [],
+							"description": "Source PDF file to translate"
+						},
+						{
+							"key": "source_language",
+							"value": "en",
+							"type": "text",
+							"description": "Source language code (e.g. en)"
+						},
+						{
+							"key": "target_language",
+							"value": "bn",
+							"type": "text",
+							"description": "Target language code (e.g. bn)"
+						}
+					]
+				},
+				"url": {
+					"raw": "http://localhost:8000/api/translate-pdf",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8000",
+					"path": [
+						"api",
+						"translate-pdf"
+					]
+				},
+				"description": "Extracts text from uploaded PDF, translates it to target language, and returns brand-new PDF."
+			},
+			"response": []
+		},
+		{
+			"name": "API B - Watermark PDF",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "formdata",
+					"formdata": [
+						{
+							"key": "file",
+							"type": "file",
+							"src": [],
+							"description": "Source PDF file to watermark"
+						},
+						{
+							"key": "text",
+							"value": "CONFIDENTIAL",
+							"type": "text",
+							"description": "Watermark text"
+						},
+						{
+							"key": "position",
+							"value": "center",
+							"type": "text",
+							"description": "Allowed: top-left, top-center, top-right, center, bottom-left, bottom-center, bottom-right"
+						},
+						{
+							"key": "opacity",
+							"value": "0.5",
+							"type": "text",
+							"description": "Opacity float between 0.0 and 1.0"
+						},
+						{
+							"key": "color",
+							"value": "#FF0000",
+							"type": "text",
+							"description": "Hex color code e.g. #FF0000"
+						}
+					]
+				},
+				"url": {
+					"raw": "http://localhost:8000/editor/pdf/watermark",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8000",
+					"path": [
+						"editor",
+						"pdf",
+						"watermark"
+					]
+				},
+				"description": "Applies a text watermark with specified position, opacity, and color onto every page of the PDF."
+			},
+			"response": []
+		},
+		{
+			"name": "Utility - Health Check",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8000/health",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8000",
+					"path": [
+						"health"
+					]
+				},
+				"description": "Returns 200 OK status to check server health."
+			},
+			"response": []
+		}
+	]
+}
