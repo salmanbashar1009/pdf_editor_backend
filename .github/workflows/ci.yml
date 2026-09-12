@@ -29,7 +29,8 @@ jobs:
 
       - name: Run Test Suite
         run: |
-          pytest tests/ -v
+          PYTHONPATH=. pytest tests/ -v
+
 
   docker:
     name: Build & Verify Docker Container
