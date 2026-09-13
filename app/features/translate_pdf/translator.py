@@ -18,6 +18,12 @@ from app.core.exceptions import TranslationProviderError
 
 logger = logging.getLogger("pdf_editor")
 
+DEFAULT_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/122.0.0.0 Safari/537.36"
+)
+
 
 class QuotaExhaustedError(TranslationProviderError):
     """Raised when translation quota has been exhausted (HTTP 429)."""
@@ -35,12 +41,18 @@ class MyMemoryTranslator:
         self._url = url
         self._timeout = timeout
         self._quota_exhausted: bool = False
+        self._cache: dict[tuple[str, str, str], str] = {}
 
     def translate(self, text: str, source: str, target: str) -> str:
-        if self._quota_exhausted:
-            raise QuotaExhaustedError("MyMemory free-tier quota has been exhausted for today")
         if not text.strip():
             return text
+        cache_key = (text, source, target)
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+
+        if self._quota_exhausted:
+            raise QuotaExhaustedError("MyMemory free-tier quota has been exhausted for today")
+
         max_retries = 3
         backoff = 0.5
         for attempt in range(1, max_retries + 1):
@@ -49,10 +61,11 @@ class MyMemoryTranslator:
                 if getattr(self, "_api_key", None):
                     params["key"] = self._api_key
                 
+                headers = {"User-Agent": DEFAULT_USER_AGENT}
                 try:
-                    response = httpx.get(self._url, params=params, timeout=self._timeout)
+                    response = httpx.get(self._url, params=params, headers=headers, timeout=self._timeout)
                 except httpx.ConnectError:
-                    response = httpx.get(self._url, params=params, timeout=self._timeout, verify=False)
+                    response = httpx.get(self._url, params=params, headers=headers, timeout=self._timeout, verify=False)
 
                 if response.status_code == 429:
                     self._quota_exhausted = True
@@ -71,6 +84,7 @@ class MyMemoryTranslator:
                 if not translated:
                     raise TranslationProviderError("Translation provider returned no text")
 
+                self._cache[cache_key] = translated
                 time.sleep(0.2)
                 return translated
             except QuotaExhaustedError:
@@ -100,26 +114,34 @@ class LibreTranslateTranslator:
         self._url = url.rstrip('/')
         self._timeout = timeout
         self._quota_exhausted: bool = False
+        self._cache: dict[tuple[str, str, str], str] = {}
 
     def translate(self, text: str, source: str, target: str) -> str:
         if not text.strip():
             return text
+        cache_key = (text, source, target)
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+
         payload = {
             "q": text,
             "source": source,
             "target": target,
             "format": "text",
         }
+        headers = {"User-Agent": DEFAULT_USER_AGENT}
         try:
             response = httpx.post(
                 f"{self._url}/translate",
                 json=payload,
+                headers=headers,
                 timeout=self._timeout,
             )
         except httpx.ConnectError:
             response = httpx.post(
                 f"{self._url}/translate",
                 json=payload,
+                headers=headers,
                 timeout=self._timeout,
                 verify=False,
             )
@@ -128,6 +150,7 @@ class LibreTranslateTranslator:
         translated = data.get("translatedText")
         if not translated:
             raise TranslationProviderError("LibreTranslate returned empty result")
+        self._cache[cache_key] = translated
         time.sleep(0.2)
         return translated
 
@@ -139,10 +162,15 @@ class GoogleTranslateTranslator:
         self._url = url
         self._timeout = timeout
         self._quota_exhausted: bool = False
+        self._cache: dict[tuple[str, str, str], str] = {}
 
     def translate(self, text: str, source: str, target: str) -> str:
         if not text.strip():
             return text
+        cache_key = (text, source, target)
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+
         max_retries = 3
         backoff = 0.5
         for attempt in range(1, max_retries + 1):
@@ -154,10 +182,14 @@ class GoogleTranslateTranslator:
                     "dt": "t",
                     "q": text,
                 }
+                headers = {
+                    "User-Agent": DEFAULT_USER_AGENT,
+                    "Accept": "*/*",
+                }
                 try:
-                    response = httpx.get(self._url, params=params, timeout=self._timeout)
+                    response = httpx.get(self._url, params=params, headers=headers, timeout=self._timeout)
                 except httpx.ConnectError:
-                    response = httpx.get(self._url, params=params, timeout=self._timeout, verify=False)
+                    response = httpx.get(self._url, params=params, headers=headers, timeout=self._timeout, verify=False)
 
                 response.raise_for_status()
                 data = response.json()
@@ -165,6 +197,7 @@ class GoogleTranslateTranslator:
                     parts = [item[0] for item in data[0] if item and isinstance(item, list) and len(item) > 0 and item[0]]
                     translated = "".join(parts)
                     if translated:
+                        self._cache[cache_key] = translated
                         time.sleep(0.1)
                         return translated
                 raise TranslationProviderError("Google Translate returned empty result")
