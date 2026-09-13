@@ -3,7 +3,7 @@
 The module defines a `Translator` protocol and concrete implementations:
 * :class:`MyMemoryTranslator` – free, key‑less MyMemory API with quota‑exhaustion handling.
 * :class:`LibreTranslateTranslator` – free public LibreTranslate instances.
-* :class:`GoogleTranslateTranslator` – free, keyless Google Translate web provider.
+* :class:`GoogleTranslateTranslator` – free, keyless multi-endpoint Google Translate provider.
 * :class:`FallbackTranslator` – composite translator that falls back to Google Translate if primary fails/hits quota.
 """
 
@@ -156,13 +156,53 @@ class LibreTranslateTranslator:
 
 
 class GoogleTranslateTranslator:
-    """Free key-less Google Translate provider via translate.googleapis.com endpoint."""
+    """Free key-less Google Translate provider trying multiple endpoints (gtx, dict-chrome-ex)."""
 
     def __init__(self, url: str = "https://translate.googleapis.com/translate_a/single", timeout: float = 30.0) -> None:
         self._url = url
         self._timeout = timeout
         self._quota_exhausted: bool = False
         self._cache: dict[tuple[str, str, str], str] = {}
+
+    def _try_gtx(self, text: str, source: str, target: str) -> str | None:
+        params = {"client": "gtx", "sl": source, "tl": target, "dt": "t", "q": text}
+        headers = {"User-Agent": DEFAULT_USER_AGENT, "Accept": "*/*"}
+        try:
+            try:
+                response = httpx.get(self._url, params=params, headers=headers, timeout=self._timeout)
+            except httpx.ConnectError:
+                response = httpx.get(self._url, params=params, headers=headers, timeout=self._timeout, verify=False)
+
+            if response.status_code == 200:
+                data = response.json()
+                if data and isinstance(data, list) and len(data) > 0 and isinstance(data[0], list):
+                    parts = [item[0] for item in data[0] if item and isinstance(item, list) and len(item) > 0 and item[0]]
+                    translated = "".join(parts)
+                    if translated:
+                        return translated
+        except Exception:
+            pass
+        return None
+
+    def _try_chrome_dict(self, text: str, source: str, target: str) -> str | None:
+        url = "https://clients5.google.com/translate_a/t"
+        params = {"client": "dict-chrome-ex", "sl": source, "tl": target, "q": text}
+        headers = {"User-Agent": DEFAULT_USER_AGENT, "Accept": "*/*"}
+        try:
+            try:
+                response = httpx.get(url, params=params, headers=headers, timeout=self._timeout)
+            except httpx.ConnectError:
+                response = httpx.get(url, params=params, headers=headers, timeout=self._timeout, verify=False)
+
+            if response.status_code == 200:
+                data = response.json()
+                if isinstance(data, list) and len(data) > 0 and isinstance(data[0], str):
+                    return data[0]
+                if isinstance(data, str) and data:
+                    return data
+        except Exception:
+            pass
+        return None
 
     def translate(self, text: str, source: str, target: str) -> str:
         if not text.strip():
@@ -175,32 +215,22 @@ class GoogleTranslateTranslator:
         backoff = 0.5
         for attempt in range(1, max_retries + 1):
             try:
-                params = {
-                    "client": "gtx",
-                    "sl": source,
-                    "tl": target,
-                    "dt": "t",
-                    "q": text,
-                }
-                headers = {
-                    "User-Agent": DEFAULT_USER_AGENT,
-                    "Accept": "*/*",
-                }
-                try:
-                    response = httpx.get(self._url, params=params, headers=headers, timeout=self._timeout)
-                except httpx.ConnectError:
-                    response = httpx.get(self._url, params=params, headers=headers, timeout=self._timeout, verify=False)
+                # 1. Try primary GTX endpoint
+                res = self._try_gtx(text, source, target)
+                if not res:
+                    # 2. Fallback to Chrome Dict endpoint
+                    res = self._try_chrome_dict(text, source, target)
 
-                response.raise_for_status()
-                data = response.json()
-                if data and isinstance(data, list) and len(data) > 0 and isinstance(data[0], list):
-                    parts = [item[0] for item in data[0] if item and isinstance(item, list) and len(item) > 0 and item[0]]
-                    translated = "".join(parts)
-                    if translated:
-                        self._cache[cache_key] = translated
-                        time.sleep(0.1)
-                        return translated
-                raise TranslationProviderError("Google Translate returned empty result")
+                if res:
+                    self._cache[cache_key] = res
+                    time.sleep(0.1)
+                    return res
+
+                if attempt < max_retries:
+                    time.sleep(backoff)
+                    backoff *= 2
+                    continue
+                raise TranslationProviderError("Google Translate endpoints returned no result")
             except Exception as exc:
                 if attempt < max_retries:
                     time.sleep(backoff)
